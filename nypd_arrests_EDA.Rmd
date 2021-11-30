@@ -1,0 +1,180 @@
+---
+title: "NYPD-arrests-EDA"
+author: "Eneye"
+date: "11/21/2021"
+output: github_document
+---
+
+### Introduction
+
+
+
+### Data Source
+
+
+
+#### Set Up Environment
+
+Install and load packages that will be required.
+```{r Install and load packages, include=FALSE}
+### Load Packages
+
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(dplyr)
+library(webr)
+```
+
+
+#### Load Arrests data
+
+```{r Load arrests data to be analyzed, include=FALSE}
+### Load Arrests data
+
+nypd_arrests <- read.csv("~/Eneye/Portfolio/NYPD-arrests-EDA/NYPD_Arrests_Data__Historic_.csv")
+```
+
+
+```{r}
+glimpse(nypd_arrests)
+
+```
+
+```{r}
+### Change date from chr to date format, and rename Boroughs to full names
+
+nypd_arrests <- nypd_arrests %>% 
+  mutate(ARREST_DATE = as.Date(ARREST_DATE, format = "%m/%d/%Y")) %>% 
+  mutate(ARREST_BORO = recode(ARREST_BORO, "B" = "Bronx")) %>% 
+  mutate(ARREST_BORO = recode(ARREST_BORO, "S" = "Staten Island")) %>%
+  mutate(ARREST_BORO = recode(ARREST_BORO, "K" = "Brooklyn")) %>%
+  mutate(ARREST_BORO = recode(ARREST_BORO, "M" = "Manhattan")) %>%
+  mutate(ARREST_BORO = recode(ARREST_BORO, "Q" = "Queens"))
+
+### Some borough fields were blank, I used lat long to find correct borough
+  nypd_arrests[nypd_arrests$ARREST_KEY==86596544, "ARREST_BORO"] <- "Manhattan"
+  nypd_arrests[nypd_arrests$ARREST_KEY==65627643, "ARREST_BORO"] <- "Manhattan"
+  nypd_arrests[nypd_arrests$ARREST_KEY==61712847, "ARREST_BORO"] <- "Manhattan"
+  nypd_arrests[nypd_arrests$ARREST_KEY==56349345, "ARREST_BORO"] <- "Brooklyn"
+  nypd_arrests[nypd_arrests$ARREST_KEY==44798797, "ARREST_BORO"] <- "Brooklyn"
+  nypd_arrests[nypd_arrests$ARREST_KEY==39275686, "ARREST_BORO"] <- "Bronx"
+  nypd_arrests[nypd_arrests$ARREST_KEY==38776166, "ARREST_BORO"] <- "Manhattan"
+  nypd_arrests[nypd_arrests$ARREST_KEY==37811154, "ARREST_BORO"] <- "Manhattan" 
+```
+
+
+```{r}
+###  Rename level of offences with full names
+
+nypd_arrests <- nypd_arrests %>% 
+  mutate(LAW_CAT_CD = recode(LAW_CAT_CD, "F" = "Felony")) %>% 
+  mutate(LAW_CAT_CD = recode(LAW_CAT_CD, "M" = "Misdemeanor")) %>%
+  mutate(LAW_CAT_CD = recode(LAW_CAT_CD, "V" = "Violation")) %>%
+  mutate(LAW_CAT_CD = recode(LAW_CAT_CD, "I" = "Infraction"))
+
+nypd_arrests[nypd_arrests$LAW_CAT_CD=="", "LAW_CAT_CD"] <- "Unspecified"
+  
+```
+
+
+```{r}
+### Create new column with Jurisdiction code renamed
+
+nypd_arrests <- nypd_arrests %>% 
+  mutate(JURISDICTION = case_when(
+    .$JURISDICTION_CODE == 0 ~ "Patrol",
+    .$JURISDICTION_CODE == 1 ~ "Transit",
+    .$JURISDICTION_CODE == 2 ~ "Housing",
+    .$JURISDICTION_CODE >= 3 ~ "Others")
+  )
+
+
+```
+
+```{r}
+### Rename age value
+
+
+nypd_arrests$AGE_GROUP[which(!is.na(as.numeric(nypd_arrests$AGE_GROUP)))] <- "UNKNOWN"
+
+nypd_arrests[nypd_arrests$AGE_GROUP=="", "AGE_GROUP"] <- "UNKNOWN"
+
+```
+
+
+```{r}
+### Create new columns showing month and day of week for arrests
+
+nypd_arrests$ARREST_MONTH <- format(as.Date(nypd_arrests$ARREST_DATE), "%B")
+nypd_arrests$ARREST_YEAR <- format(as.Date(nypd_arrests$ARREST_DATE), "%Y")
+nypd_arrests$ARREST_WEEKDAY <- format(as.Date(nypd_arrests$ARREST_DATE), "%A")
+
+```
+
+
+```{r}
+
+nypd_arrests %>% 
+  group_by(ARREST_BORO, PERP_SEX) %>%  #groups by usertype and weekday
+  summarise(number_of_arrests = n()) %>%  #calculates the number of rides and average
+  arrange(ARREST_BORO, PERP_SEX)   # sorts
+```
+
+# Visualizations
+```{r}
+### Arrests by Sex and Borough
+
+arrests_by_sex <- nypd_arrests %>% 
+  group_by(ARREST_BORO, PERP_SEX) %>%
+  summarise(number_of_arrests = n())
+
+PieDonut(arrests_by_sex, aes(PERP_SEX, ARREST_BORO, count=number_of_arrests), ratioByGroup = FALSE, explode = 1, explodeDonut=TRUE, r0 = 0.45, r1 = 0.9)
+
+  
+
+
+
+```
+
+```{r}
+### Arrests by Race
+
+arrests_by_race <- nypd_arrests %>% 
+  group_by(PERP_RACE) %>%
+  summarise(number_of_arrests = n())
+ggplot(arrests_by_race,
+       aes(x = number_of_arrests, y = reorder(PERP_RACE, -number_of_arrests), fill = PERP_RACE, label = number_of_arrests)) +
+  geom_col() +
+  geom_text(aes(label = number_of_arrests), vjust = 0, hjust = 0, size = 3) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.1))) +
+  scale_y_discrete(limits = rev) +
+  scale_fill_manual(breaks = c("BLACK", "WHITE HISPANIC", "WHITE", "BLACK HISPANIC", "ASIAN / PACIFIC ISLANDER", "UNKNOWN", "AMERICAN INDIAN/ALASKAN NATIVE", "OTHER"),
+                    values = c("#f7941d", "#039fe0", "#039fe0",
+                               "#039fe0", "#039fe0", "#039fe0", "#039fe0","#039fe0")) +
+  labs(x = "number_of_arrests",
+       y = "PERP_RACE",
+       title = "Arrests by Race") +
+  theme_bw() +
+  theme(panel.grid.major.y = element_blank(),
+        legend.position = "off")
+```
+```{r}
+### Arrests by Age
+
+arrests_by_age <- nypd_arrests %>% 
+  group_by(AGE_GROUP) %>%
+  summarise(number_of_arrests = n())
+ggplot(arrests_by_age, aes(x = number_of_arrests, y = reorder(AGE_GROUP, -number_of_arrests), fill = AGE_GROUP)) +
+  geom_col(position = position_dodge()) +
+  geom_text(aes(label = number_of_arrests), vjust = -0.5, hjust = 0.5, size = 3) +
+  scale_fill_manual(breaks = c("<18", "18-24", "25-44", "45-64", "65+", "UNKNOWN"),
+                    values = c("#039fe0", "#039fe0", "#f7941d",
+                               "#039fe0", "#039fe0", "#039fe0")) +
+  labs(x = "number_of_arrests",
+       y = "Age Group",
+       title = "Arrests by Age Group") +
+  
+  coord_flip()
+```
+
